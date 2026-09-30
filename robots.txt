@@ -1,0 +1,5 @@
+# Permite que Google y otros buscadores revisen toda la página
+User-agent: *
+Allow: /
+
+Sitemap: https://iglesiaunc.github.io/sitemap.xml
