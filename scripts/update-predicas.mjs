@@ -9,6 +9,10 @@ import { readFileSync, writeFileSync } from 'node:fs';
 const CHANNEL_ID = 'UCyhUR-hVJ0xJXlgWRJ7ucpw';
 const API_KEY = process.env.YOUTUBE_API_KEY;
 const HTML_PATH = new URL('../index.html', import.meta.url);
+// El canal también sube YouTube Shorts (clips verticales cortos) que no son
+// prédicas completas. Los descartamos por duración: una prédica real dura
+// varios minutos; un Short dura máximo 1 minuto. Usamos 3 minutos de margen.
+const DURACION_MINIMA_SEGUNDOS = 180;
 
 if (!API_KEY) {
   console.error('Falta la variable de entorno YOUTUBE_API_KEY.');
@@ -40,27 +44,64 @@ function partirTitulo(tituloCompleto) {
   return { titulo, predicador };
 }
 
-async function obtenerUltimasPredicas() {
+// ISO 8601 ("PT1H2M10S") -> segundos
+function duracionEnSegundos(iso8601) {
+  const m = iso8601.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+  if (!m) return 0;
+  const [, h, min, s] = m;
+  return (Number(h) || 0) * 3600 + (Number(min) || 0) * 60 + (Number(s) || 0);
+}
+
+async function buscarVideosRecientes() {
   const url = new URL('https://www.googleapis.com/youtube/v3/search');
   url.searchParams.set('key', API_KEY);
   url.searchParams.set('channelId', CHANNEL_ID);
   url.searchParams.set('part', 'snippet');
   url.searchParams.set('order', 'date');
   url.searchParams.set('type', 'video');
-  url.searchParams.set('maxResults', '2');
+  url.searchParams.set('maxResults', '15'); // de sobra para que, tras filtrar Shorts, queden al menos 2
 
   const respuesta = await fetch(url);
   if (!respuesta.ok) {
-    throw new Error(`YouTube API respondió ${respuesta.status}: ${await respuesta.text()}`);
+    throw new Error(`YouTube API (search) respondió ${respuesta.status}: ${await respuesta.text()}`);
   }
   const datos = await respuesta.json();
-  if (!datos.items || datos.items.length < 2) {
-    throw new Error('La API no devolvió al menos 2 videos.');
+  return (datos.items || []).map((item) => item.id.videoId);
+}
+
+async function obtenerDuraciones(ids) {
+  const url = new URL('https://www.googleapis.com/youtube/v3/videos');
+  url.searchParams.set('key', API_KEY);
+  url.searchParams.set('id', ids.join(','));
+  url.searchParams.set('part', 'snippet,contentDetails');
+
+  const respuesta = await fetch(url);
+  if (!respuesta.ok) {
+    throw new Error(`YouTube API (videos) respondió ${respuesta.status}: ${await respuesta.text()}`);
   }
-  return datos.items.slice(0, 2).map((item) => {
+  const datos = await respuesta.json();
+  return datos.items || [];
+}
+
+async function obtenerUltimasPredicas() {
+  const ids = await buscarVideosRecientes();
+  if (ids.length === 0) {
+    throw new Error('La API no devolvió ningún video del canal.');
+  }
+
+  const detalles = await obtenerDuraciones(ids);
+  const predicas = detalles
+    .filter((v) => duracionEnSegundos(v.contentDetails.duration) >= DURACION_MINIMA_SEGUNDOS)
+    .sort((a, b) => new Date(b.snippet.publishedAt) - new Date(a.snippet.publishedAt));
+
+  if (predicas.length < 2) {
+    throw new Error('No encontré al menos 2 videos que no sean Shorts.');
+  }
+
+  return predicas.slice(0, 2).map((item) => {
     const { titulo, predicador } = partirTitulo(item.snippet.title);
     return {
-      id: item.id.videoId,
+      id: item.id,
       titulo,
       subtitulo: `${predicador}, ${formatearFecha(item.snippet.publishedAt)}`,
     };
