@@ -2,8 +2,8 @@ name: Actualizar prédicas
 
 on:
   schedule:
-    # Todos los días a las 09:00 UTC (04:00 hora de Ecuador)
-    - cron: '0 9 * * *'
+    # Todos los martes a las 09:00 UTC (04:00 hora de Ecuador)
+    - cron: '0 9 * * 2'
   workflow_dispatch: {} # permite ejecutarlo a mano desde la pestaña "Actions"
 
 permissions:
