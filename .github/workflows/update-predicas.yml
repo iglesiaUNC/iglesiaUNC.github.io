@@ -1,0 +1,39 @@
+name: Actualizar prédicas
+
+on:
+  schedule:
+    # Todos los días a las 09:00 UTC (04:00 hora de Ecuador)
+    - cron: '0 9 * * *'
+  workflow_dispatch: {} # permite ejecutarlo a mano desde la pestaña "Actions"
+
+permissions:
+  contents: write
+
+jobs:
+  actualizar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar el repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Buscar las prédicas más recientes y actualizar index.html
+        env:
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+        run: node scripts/update-predicas.mjs
+
+      - name: Publicar el cambio (si hay prédicas nuevas)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- index.html; then
+            echo "Sin cambios: ya estaban las prédicas más recientes."
+          else
+            git add index.html
+            git commit -m "Actualizar prédicas más recientes"
+            git push
+          fi
