@@ -27,13 +27,29 @@ function escapeHtml(texto) {
     .replace(/"/g, '&quot;');
 }
 
-function formatearFecha(iso) {
-  return new Date(iso).toLocaleDateString('es-EC', { day: 'numeric', month: 'long', year: 'numeric' });
+function formatearFecha(fecha) {
+  return fecha.toLocaleDateString('es-EC', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
+}
+
+const MESES = {
+  enero: 0, febrero: 1, marzo: 2, abril: 3, mayo: 4, junio: 5,
+  julio: 6, agosto: 7, septiembre: 8, setiembre: 8, octubre: 9, noviembre: 10, diciembre: 11,
+};
+
+// Los 2 videos a mostrar se eligen por fecha de SUBIDA (publishedAt), sin
+// importar cuándo se predicaron. Pero para el texto que se muestra en la
+// tarjeta usamos la fecha que el título trae escrita a mano ("...-DD de Mes
+// AAAA"), porque es la fecha real de la prédica y puede no coincidir con la
+// de subida. Si el título no trae fecha, se usa publishedAt como respaldo.
+function extraerFechaDeTitulo(tituloCompleto) {
+  const m = tituloCompleto.match(/(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+(\d{4})/i);
+  if (!m) return null;
+  const mes = MESES[m[2].toLowerCase()];
+  if (mes === undefined) return null;
+  return new Date(Date.UTC(Number(m[3]), mes, Number(m[1])));
 }
 
 // El canal nombra sus videos como "Título - Pr. Nombre -DD de Mes AAAA".
-// Extraemos el título y el predicador de ahí, pero la FECHA siempre se toma
-// de la API (publishedAt), que es la fuente confiable.
 function partirTitulo(tituloCompleto) {
   const matchPredicador = tituloCompleto.match(/Pr\.\s*([^-]+)/i);
   const predicador = matchPredicador ? `Pr. ${matchPredicador[1].trim()}` : 'Iglesia Un Nuevo Comienzo';
@@ -100,10 +116,11 @@ async function obtenerUltimasPredicas() {
 
   return predicas.slice(0, 2).map((item) => {
     const { titulo, predicador } = partirTitulo(item.snippet.title);
+    const fecha = extraerFechaDeTitulo(item.snippet.title) || new Date(item.snippet.publishedAt);
     return {
       id: item.id,
       titulo,
-      subtitulo: `${predicador}, ${formatearFecha(item.snippet.publishedAt)}`,
+      subtitulo: `${predicador}, ${formatearFecha(fecha)}`,
     };
   });
 }
